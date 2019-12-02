@@ -1,4 +1,5 @@
 export type SurrogateMapping = Array<number[][]>;
+export type NumberOrString = number | string;
 
 const ERRORS = {
   rangeOrder:
@@ -23,6 +24,10 @@ function isNumber(x: any): x is number {
   return typeof x === "number";
 }
 
+function isNumberOrString(x: any): x is NumberOrString {
+  return typeof x === "number" || typeof x === "string";
+}
+
 // This assumes that `number` is a positive integer that `toString()`s nicely
 // (which is the case for all code point values).
 const zeroes = "0000";
@@ -33,7 +38,7 @@ function pad(number:number|string, totalCharacters:number) {
     : string;
 }
 
-function hex(number: number | string) {
+function hex(number: NumberOrString) {
   return Number(number)
     .toString(16)
     .toUpperCase();
@@ -278,7 +283,7 @@ function dataRemoveData(dataA: any[], dataB: any[]) {
   return data;
 }
 
-function dataAddRange(data: any[] | number[], rangeStart: number, rangeEnd: number) {
+function dataAddRange(data: number[], rangeStart: number, rangeEnd: number) {
   if (rangeEnd < rangeStart) {
     throw Error(ERRORS.rangeOrder);
   }
@@ -992,42 +997,41 @@ export class Regenerate {
 
   public data: number[];
 
-  constructor(...args: Array<string | number>) {
+  constructor(...args: (NumberOrString | number[] | string[])[]) {
     this.data = [];
     if(args.length > 0) {
-      this.add(args);
+      args.forEach(item => this.add(item));
     }
   }
 
   /** Adds arguments to the set */
 
-  public add(value: Regenerate | string | number | Array<string | number>,...args: Array<string | number>) {    
-    if (value instanceof Regenerate) {
-      // Allow passing other Regenerate instances.
-      this.data = dataAddData(this.data, value.data);      
-      return this;
-    }
-    
-    if (Array.isArray(value)) {
-      const that = this;
-      if (args.length > 0) {
-        value = value.concat(args);
+  public add(...args: any[]) {    
+    //if (value instanceof Regenerate) {
+    //  // Allow passing other Regenerate instances.
+    //  this.data = dataAddData(this.data, value.data);      
+    //  return this;
+    //}
+    args.forEach(item => {
+      if(Array.isArray(item)) {
+        item.forEach((subItem: NumberOrString) => {
+          this.data = dataAdd(
+            this.data,
+            isNumber(subItem) ? subItem : symbolToCodePoint(subItem)
+          );  
+        }); 
+      } else {
+        this.data = dataAdd(
+          this.data,
+          isNumber(item) ? item : symbolToCodePoint(item)
+        );
       }
-      value.forEach(function(item) {
-        that.add(isNumber(item) ? item : symbolToCodePoint(item)
-          );
-      });      
+    });
       return this;
-    }
-    this.data = dataAdd(
-      this.data,
-      isNumber(value) ? value : symbolToCodePoint(value)
-    );
-    return this;
-  }
+    }    
 
   /** Adds a range of code points from `start` to `end` (inclusive) to the set. */
-  public addRange(start: number | string, end: number | string) {
+  public addRange(start: NumberOrString, end: NumberOrString) {
     this.data = dataAddRange(
       this.data,
       isNumber(start) ? start : symbolToCodePoint(start),
@@ -1037,7 +1041,7 @@ export class Regenerate {
   }
 
   /** Removes arguments from the set */
-  public remove(value?: Regenerate | string | number | Array<string | number> ,...args: Array<string | number>) {
+  public remove(value?: Regenerate | NumberOrString | Array<NumberOrString> ,...args: Array<NumberOrString | NumberOrString[]>) {
     if (!value) {
       return this;
     }
@@ -1057,13 +1061,13 @@ export class Regenerate {
     }
     this.data = dataRemove(
       this.data,
-      (typeof value === "number") ? value : symbolToCodePoint(value)
+      (typeof value === "number") ? value : symbolToCodePoint(value.toString())
     );
     return this;
   }
 
   /** Removes a range of code points from `start` to `end` (inclusive) from the set. */
-  public removeRange(start: number | string, end: number | string) {
+  public removeRange(start: NumberOrString, end: NumberOrString) {
     var startCodePoint = isNumber(start) ? start : symbolToCodePoint(start);
     var endCodePoint = isNumber(end) ? end : symbolToCodePoint(end);
     this.data = dataRemoveRange(this.data, startCodePoint, endCodePoint);
@@ -1081,7 +1085,7 @@ export class Regenerate {
   }
 
   /** Returns `true` if the given value is part of the set, and `false` otherwise. */
-  public contains(value: number | string): boolean {
+  public contains(value: NumberOrString): boolean {
     let ret = false;
     const codePoint = (typeof value === 'number') ? value : symbolToCodePoint(value);
     ret = dataContains(this.data,codePoint);
@@ -1099,7 +1103,8 @@ export class Regenerate {
     return this.valueOf();
   }
 
-  public toString(options: any) {
+  public toString(options?: any) {
+    options = {...options, ...{bmpOnly: false, hasUnicodeFlag: false}};
     let result = createCharacterClassesFromData(
       this.data,
       options ? options.bmpOnly : false,
@@ -1115,11 +1120,11 @@ export class Regenerate {
     return result.replace(regexNull, "\\0$1");
   }
 
-  public toRegExp(flags: string) {
+  public toRegExp(flags = "") {
     let pattern = this.toString(
-      flags && flags.indexOf("u") != -1 ? { hasUnicodeFlag: true } : null
+      flags && flags.indexOf("u") != -1 ? { hasUnicodeFlag: true } : undefined
     );
-    return RegExp(pattern, flags || "");
+    return RegExp(pattern, flags);
   }
 
   public valueOf() {
@@ -1128,16 +1133,11 @@ export class Regenerate {
   }
 }
 
-const regenerate = (set?: Regenerate| string | number | (string | number)[], ...args: (string | number)[]) => {
+export default (...args: (NumberOrString | NumberOrString[])[]) => {  
   let ret = new Regenerate();
-  if (set !== undefined) {
-    ret = ret.add(set);
-  }
   if (args !== undefined) {
     ret = ret.add(args);
   }
-
   return ret;
 };
 
-export default regenerate;
