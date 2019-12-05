@@ -2,13 +2,23 @@
   "compilerOptions": {
     "target": "esnext",
     "module": "es2015",
-    "lib": ["es2015"],                    
+    "lib": [
+      "es2015"
+    ],
     "outDir": "./dist",
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noImplicitReturns": true,
     "experimentalDecorators": true,
-    "emitDecoratorMetadata": true
+    "emitDecoratorMetadata": true,
+    "plugins": [
+      {
+        "name": "typescript-tslint-plugin",
+        "alwaysShowRuleFailuresAsWarnings": false,
+        "ignoreDefinitionFiles": true,        
+        "suppressWhileTypeErrorsPresent": false
+      }
+    ]
   }
 }

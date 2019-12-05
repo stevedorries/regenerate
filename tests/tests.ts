@@ -1,5 +1,5 @@
 import { test, runTests } from "https://deno.land/std/testing/mod.ts";
-import { assertEquals, assertThrows } from "https://deno.land/std/testing/asserts.ts";
+import { assertEquals, assertThrows, fail } from "https://deno.land/std/testing/asserts.ts";
 import * as log from "https://deno.land/std/log/mod.ts";
 import {default as regenerate, Regenerate} from "../regenerate.ts";
 
@@ -15,9 +15,18 @@ const set = regenerate(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
 const setB = regenerate(0x1337, 0x1338, 0x31337);
 const setC = regenerate(0x42);
 
+const supportsUnicodeFlag = (function() {
+	try {
+		const regex = new RegExp('\\u{1D306}', 'u');
+		return true;
+	} catch (exception) {
+		return false
+	}
+}());
+
 test({
 	name:"Add and Clone",
-	fn():void {
+	fn: function addAndClone():void {
 		assertEquals(
 			set.clone().add(setB.toArray()).add(setC.toArray()).toArray(),
 			[3, 10, 0x42, 0x1337, 0x1338, 0x1D306, 0x31337],
@@ -28,7 +37,7 @@ test({
 
 test({
 name:"Remove Set",
-fn():void {
+fn: function removeSet():void {
 
 	assertEquals(
 		regenerate(3, 10, 0x42, 0x1337, 0x1338, 0x1D306, 0x31337).remove(setB).remove(setC).toArray(),
@@ -45,7 +54,7 @@ fn():void {
 
 test({
 	name:"Intersection",
-	fn():void {
+	fn: function setIntersections():void {
 		assertEquals(
 			regenerate(3, 10, 0x42, 0x1337, 0x1D306, 0x31337).intersection(setB).toArray(),
 			[0x1337, 0x31337],
@@ -61,7 +70,7 @@ test({
 
   test({
 	  name:"To Array",
-	  fn():void {
+	  fn: function toArrayTests():void {
 		assertEquals(
 			regenerate(0, 1, 2, 3, 4, 5).remove(5).toArray(),
 			[0, 1, 2, 3, 4],
@@ -91,7 +100,8 @@ test({
 	});
 test({
 	name:"To String",
-	fn():void {
+	fn: function toStringTests():void {
+		
 		assertEquals(
 			set.toString(),
 			'[\\x03\\n]|\\uD834\\uDF06',
@@ -101,7 +111,7 @@ test({
   });
 test({
 	name:"To RegExp",
-	fn():void {
+	fn: function toRegExTets():void {		
 		assertEquals(
 			regenerate().addRange(0x0000, 0x0300).removeRange(0x0100, 0x0200).toRegExp(),
 			/[\0-\xFF\u0201-\u0300]/,
@@ -111,25 +121,25 @@ test({
 			regenerate().addRange(0x0000, 0x0300).removeRange(0x0100, 0x0200).toRegExp('g'),
 			/[\0-\xFF\u0201-\u0300]/g,
 			'toRegExp with flags'
-		);
-		var supportsUnicodeFlag = (function() {
-			try {
-				const regex = new RegExp('\\u{1D306}', 'u');
-				return true;
-			} catch (exception) {
-				return false
-			}
-		}());
-		supportsUnicodeFlag && assertEquals(
+		);		
+	}
+  });
+  test({
+	name:"To RegExp With Flags",
+	fn: function regExFlags():void {		
+		if(supportsUnicodeFlag){ assertEquals(
 			regenerate().addRange(0x0, 0x10FFFF).toRegExp('gu'),
 			new RegExp('[\\0-\\u{10FFFF}]', 'gu'),
 			'toRegExp with `u` flag triggers `hasUnicodeFlag: true`'
 		);
+		} else {
+			log.debug("'u' flag not supported in this environment");
+		}
 	}
   });
   test({
 	  name:"Contains",
-	  fn():void {
+	  fn: function setContainsTests():void {		  
 		assertEquals(
 			set.contains(0x1D306),
 			true,
@@ -160,9 +170,45 @@ test({
 		);
 	  }
 	});
+	test({
+		name:"Unmatched Surrogates",
+		fn: function unmatchedSurrogates():void {
+			assertEquals(
+				regenerate(0xD800, 0xD801, 0xD802, 0xD803, 0xDBFF).toString(),
+				'[\\uD800-\\uD803\\uDBFF](?![\\uDC00-\\uDFFF])',
+				'Unmatched high surrogates'
+			);
+			assertEquals(
+				regenerate(0xD800, 0xD801, 0xD802, 0xD803, 0xDBFF).toString({ 'bmpOnly': false }),
+				'[\\uD800-\\uD803\\uDBFF](?![\\uDC00-\\uDFFF])',
+				'Unmatched high surrogates with `bmpOnly: false`'
+			);
+			assertEquals(
+				regenerate(0xD800, 0xD801, 0xD802, 0xD803, 0xDBFF).toString({ 'bmpOnly': true }),
+				'[\\uD800-\\uD803\\uDBFF]',
+				'Unmatched high surrogates with `bmpOnly: true`'
+			);
+			assertEquals(
+				regenerate(0xDC00, 0xDC01, 0xDC02, 0xDC03, 0xDC04, 0xDC05, 0xDFFB, 0xDFFD, 0xDFFE, 0xDFFF).toString(),
+				'(?:[^\\uD800-\\uDBFF]|^)[\\uDC00-\\uDC05\\uDFFB\\uDFFD-\\uDFFF]',
+				'Unmatched low surrogates'
+			);
+			assertEquals(
+				regenerate(0xDC00, 0xDC01, 0xDC02, 0xDC03, 0xDC04, 0xDC05, 0xDFFB, 0xDFFD, 0xDFFE, 0xDFFF).toString({ 'bmpOnly': false }),
+				'(?:[^\\uD800-\\uDBFF]|^)[\\uDC00-\\uDC05\\uDFFB\\uDFFD-\\uDFFF]',
+				'Unmatched low surrogates with `bmpOnly: false`'
+			);
+			assertEquals(
+				regenerate(0xDC00, 0xDC01, 0xDC02, 0xDC03, 0xDC04, 0xDC05, 0xDFFB, 0xDFFD, 0xDFFE, 0xDFFF).toString({ 'bmpOnly': true }),
+				'[\\uDC00-\\uDC05\\uDFFB\\uDFFD-\\uDFFF]',
+				'Unmatched low surrogates with `bmpOnly: true`'
+			);
+		
+		}
+	  });
 test({
-		name:'general functionality', 
-		fn(): void {
+		name:'General Functionality', 
+		fn: function generalFunctionality(): void {
 		
 		
 		assertEquals(
@@ -380,36 +426,7 @@ test({
 			'[ !#\\/]',
 			'Random BMP code points'
 		);
-		assertEquals(
-			regenerate(0xD800, 0xD801, 0xD802, 0xD803, 0xDBFF).toString(),
-			'[\\uD800-\\uD803\\uDBFF](?![\\uDC00-\\uDFFF])',
-			'Unmatched high surrogates'
-		);
-		assertEquals(
-			regenerate(0xD800, 0xD801, 0xD802, 0xD803, 0xDBFF).toString({ 'bmpOnly': false }),
-			'[\\uD800-\\uD803\\uDBFF](?![\\uDC00-\\uDFFF])',
-			'Unmatched high surrogates with `bmpOnly: false`'
-		);
-		assertEquals(
-			regenerate(0xD800, 0xD801, 0xD802, 0xD803, 0xDBFF).toString({ 'bmpOnly': true }),
-			'[\\uD800-\\uD803\\uDBFF]',
-			'Unmatched high surrogates with `bmpOnly: true`'
-		);
-		assertEquals(
-			regenerate(0xDC00, 0xDC01, 0xDC02, 0xDC03, 0xDC04, 0xDC05, 0xDFFB, 0xDFFD, 0xDFFE, 0xDFFF).toString(),
-			'(?:[^\\uD800-\\uDBFF]|^)[\\uDC00-\\uDC05\\uDFFB\\uDFFD-\\uDFFF]',
-			'Unmatched low surrogates'
-		);
-		assertEquals(
-			regenerate(0xDC00, 0xDC01, 0xDC02, 0xDC03, 0xDC04, 0xDC05, 0xDFFB, 0xDFFD, 0xDFFE, 0xDFFF).toString({ 'bmpOnly': false }),
-			'(?:[^\\uD800-\\uDBFF]|^)[\\uDC00-\\uDC05\\uDFFB\\uDFFD-\\uDFFF]',
-			'Unmatched low surrogates with `bmpOnly: false`'
-		);
-		assertEquals(
-			regenerate(0xDC00, 0xDC01, 0xDC02, 0xDC03, 0xDC04, 0xDC05, 0xDFFB, 0xDFFD, 0xDFFE, 0xDFFF).toString({ 'bmpOnly': true }),
-			'[\\uDC00-\\uDC05\\uDFFB\\uDFFD-\\uDFFF]',
-			'Unmatched low surrogates with `bmpOnly: true`'
-		);
+		
 		assertEquals(
 			regenerate('a', '\xA9', 0x1D306).toString({ 'hasUnicodeFlag': true }),
 			'[a\\xA9\\u{1D306}]',
@@ -465,14 +482,14 @@ test({
 				regenerate(0x110000).toString();
 			},
 			RangeError,
-			'Invalid code point > 0x10FFFF'
+			'Invalid code point value. Code points range from U+000000 to U+10FFFF.'
 		);
 		assertThrows(
 			function() {
 				regenerate(-1).toString();
 			},
 			RangeError,
-			'Invalid code point < 0x0000'
+			'Invalid code point value. Code points range from U+000000 to U+10FFFF.'
 		);
 		assertEquals(
 			regenerate().addRange(0x10, 0x13).toString(),
@@ -489,28 +506,28 @@ test({
 				regenerate().addRange(0xFFFF, 0x0).toString();
 			},
 			Error,
-			'addRange: start value greater than end value'
+			"A range’s `stop` value must be greater than or equal to the `start` value."
 		);
 		assertThrows(
 			function() {
 				regenerate().removeRange(0xFFFF, 0x0).toString();
 			},
 			Error,
-			'removeRange: start value greater than end value'
+			"A range’s `stop` value must be greater than or equal to the `start` value."
 		);
 		assertThrows(
 			function() {
 				regenerate().addRange(0x110000, 0x110005).toString();
 			},
 			RangeError,
-			'addRange: invalid code point > 0x10FFFF'
+			'Invalid code point value. Code points range from U+000000 to U+10FFFF.'
 		);
 		assertThrows(
 			function() {
 				regenerate().addRange(-10, -5).toString();
 			},
 			RangeError,
-			'addRange: Invalid code point < 0x0000'
+			'Invalid code point value. Code points range from U+000000 to U+10FFFF.'
 		);
 		assertEquals(
 			regenerate().addRange(0, 0xDCFF).toString(),
@@ -757,27 +774,17 @@ test({
 			'https://github.com/mathiasbynens/regenerate/issues/28'
 		);
 		assertEquals(
-			regenerate.prototype.valueOf,
-			regenerate.prototype.toArray,
-			'`valueOf` and `toArray` should be the same'
-		);
-		assertEquals(
 			new Regenerate('a', 'b', 0x1D306).toString(),
 			regenerate('a', 'b', 0x1D306).toString(),
 			'`regenerate` can be called as a constructor'
-		);
-		assertEquals(
-			[regenerate.prototype.add.length, regenerate.prototype.remove.length, regenerate.prototype.addRange.length, regenerate.prototype.removeRange.length, regenerate.prototype.remove.length, regenerate.prototype.intersection.length, regenerate.prototype.contains.length, regenerate.prototype.clone.length, regenerate.prototype.toString.length, regenerate.prototype.toRegExp.length, regenerate.prototype.valueOf.length, regenerate.prototype.toArray.length],
-			[1, 1, 2, 2, 1, 1, 1, 0, 1, 1, 0, 0],
-			'Regenerate methods are available on `regenerate.prototype`'
-		);
+		);		
 		assertEquals(
 			regenerate(42).data,
 			[42, 43],
 			'each Regenerate instance `set` stores its data in `set.data` for plugins to use'
 		);
 	}});
-	test('acid tests', function() {
+	test('acid tests', function acidTests() {
 		// Based on the output for https://gist.github.com/mathiasbynens/6334847
 		assertEquals(
 			regenerate(0x24, 0x5F, 0xAA, 0xB5, 0xBA, 0x2EC, 0x2EE, 0x386, 0x38C, 0x559, 0x6D5, 0x6FF, 0x710, 0x7B1, 0x7FA, 0x81A, 0x824, 0x828, 0x8A0, 0x93D, 0x950, 0x9B2, 0x9BD, 0x9CE, 0xA5E, 0xABD, 0xAD0, 0xB3D, 0xB71, 0xB83, 0xB9C, 0xBD0, 0xC3D, 0xCBD, 0xCDE, 0xD3D, 0xD4E, 0xDBD, 0xE84, 0xE8A, 0xE8D, 0xEA5, 0xEA7, 0xEBD, 0xEC6, 0xF00, 0x103F, 0x1061, 0x108E, 0x10C7, 0x10CD, 0x1258, 0x12C0, 0x17D7, 0x17DC, 0x18AA, 0x1AA7, 0x1F59, 0x1F5B, 0x1F5D, 0x1FBE, 0x2071, 0x207F, 0x2102, 0x2107, 0x2115, 0x2124, 0x2126, 0x2128, 0x214E, 0x2D27, 0x2D2D, 0x2D6F, 0x2E2F, 0xA8FB, 0xA9CF, 0xAA7A, 0xAAB1, 0xAAC0, 0xAAC2, 0xFB1D, 0xFB3E).addRange(0x41, 0x5A).addRange(0x61, 0x7A).addRange(0xC0, 0xD6).addRange(0xD8, 0xF6).addRange(0xF8, 0x2C1).addRange(0x2C6, 0x2D1).addRange(0x2E0, 0x2E4).addRange(0x370, 0x374).addRange(0x376, 0x377).addRange(0x37A, 0x37D).addRange(0x388, 0x38A).addRange(0x38E, 0x3A1).addRange(0x3A3, 0x3F5).addRange(0x3F7, 0x481).addRange(0x48A, 0x527).addRange(0x531, 0x556).addRange(0x561, 0x587).addRange(0x5D0, 0x5EA).addRange(0x5F0, 0x5F2).addRange(0x620, 0x64A).addRange(0x66E, 0x66F).addRange(0x671, 0x6D3).addRange(0x6E5, 0x6E6).addRange(0x6EE, 0x6EF).addRange(0x6FA, 0x6FC).addRange(0x712, 0x72F).addRange(0x74D, 0x7A5).addRange(0x7CA, 0x7EA).addRange(0x7F4, 0x7F5).addRange(0x800, 0x815).addRange(0x840, 0x858).addRange(0x8A2, 0x8AC).addRange(0x904, 0x939).addRange(0x958, 0x961).addRange(0x971, 0x977).addRange(0x979, 0x97F).addRange(0x985, 0x98C).addRange(0x98F, 0x990).addRange(0x993, 0x9A8).addRange(0x9AA, 0x9B0).addRange(0x9B6, 0x9B9).addRange(0x9DC, 0x9DD).addRange(0x9DF, 0x9E1).addRange(0x9F0, 0x9F1).addRange(0xA05, 0xA0A).addRange(0xA0F, 0xA10).addRange(0xA13, 0xA28).addRange(0xA2A, 0xA30).addRange(0xA32, 0xA33).addRange(0xA35, 0xA36).addRange(0xA38, 0xA39).addRange(0xA59, 0xA5C).addRange(0xA72, 0xA74).addRange(0xA85, 0xA8D).addRange(0xA8F, 0xA91).addRange(0xA93, 0xAA8).addRange(0xAAA, 0xAB0).addRange(0xAB2, 0xAB3).addRange(0xAB5, 0xAB9).addRange(0xAE0, 0xAE1).addRange(0xB05, 0xB0C).addRange(0xB0F, 0xB10).addRange(0xB13, 0xB28).addRange(0xB2A, 0xB30).addRange(0xB32, 0xB33).addRange(0xB35, 0xB39).addRange(0xB5C, 0xB5D).addRange(0xB5F, 0xB61).addRange(0xB85, 0xB8A).addRange(0xB8E, 0xB90).addRange(0xB92, 0xB95).addRange(0xB99, 0xB9A).addRange(0xB9E, 0xB9F).addRange(0xBA3, 0xBA4).addRange(0xBA8, 0xBAA).addRange(0xBAE, 0xBB9).addRange(0xC05, 0xC0C).addRange(0xC0E, 0xC10).addRange(0xC12, 0xC28).addRange(0xC2A, 0xC33).addRange(0xC35, 0xC39).addRange(0xC58, 0xC59).addRange(0xC60, 0xC61).addRange(0xC85, 0xC8C).addRange(0xC8E, 0xC90).addRange(0xC92, 0xCA8).addRange(0xCAA, 0xCB3).addRange(0xCB5, 0xCB9).addRange(0xCE0, 0xCE1).addRange(0xCF1, 0xCF2).addRange(0xD05, 0xD0C).addRange(0xD0E, 0xD10).addRange(0xD12, 0xD3A).addRange(0xD60, 0xD61).addRange(0xD7A, 0xD7F).addRange(0xD85, 0xD96).addRange(0xD9A, 0xDB1).addRange(0xDB3, 0xDBB).addRange(0xDC0, 0xDC6).addRange(0xE01, 0xE30).addRange(0xE32, 0xE33).addRange(0xE40, 0xE46).addRange(0xE81, 0xE82).addRange(0xE87, 0xE88).addRange(0xE94, 0xE97).addRange(0xE99, 0xE9F).addRange(0xEA1, 0xEA3).addRange(0xEAA, 0xEAB).addRange(0xEAD, 0xEB0).addRange(0xEB2, 0xEB3).addRange(0xEC0, 0xEC4).addRange(0xEDC, 0xEDF).addRange(0xF40, 0xF47).addRange(0xF49, 0xF6C).addRange(0xF88, 0xF8C).addRange(0x1000, 0x102A).addRange(0x1050, 0x1055).addRange(0x105A, 0x105D).addRange(0x1065, 0x1066).addRange(0x106E, 0x1070).addRange(0x1075, 0x1081).addRange(0x10A0, 0x10C5).addRange(0x10D0, 0x10FA).addRange(0x10FC, 0x1248).addRange(0x124A, 0x124D).addRange(0x1250, 0x1256).addRange(0x125A, 0x125D).addRange(0x1260, 0x1288).addRange(0x128A, 0x128D).addRange(0x1290, 0x12B0).addRange(0x12B2, 0x12B5).addRange(0x12B8, 0x12BE).addRange(0x12C2, 0x12C5).addRange(0x12C8, 0x12D6).addRange(0x12D8, 0x1310).addRange(0x1312, 0x1315).addRange(0x1318, 0x135A).addRange(0x1380, 0x138F).addRange(0x13A0, 0x13F4).addRange(0x1401, 0x166C).addRange(0x166F, 0x167F).addRange(0x1681, 0x169A).addRange(0x16A0, 0x16EA).addRange(0x16EE, 0x16F0).addRange(0x1700, 0x170C).addRange(0x170E, 0x1711).addRange(0x1720, 0x1731).addRange(0x1740, 0x1751).addRange(0x1760, 0x176C).addRange(0x176E, 0x1770).addRange(0x1780, 0x17B3).addRange(0x1820, 0x1877).addRange(0x1880, 0x18A8).addRange(0x18B0, 0x18F5).addRange(0x1900, 0x191C).addRange(0x1950, 0x196D).addRange(0x1970, 0x1974).addRange(0x1980, 0x19AB).addRange(0x19C1, 0x19C7).addRange(0x1A00, 0x1A16).addRange(0x1A20, 0x1A54).addRange(0x1B05, 0x1B33).addRange(0x1B45, 0x1B4B).addRange(0x1B83, 0x1BA0).addRange(0x1BAE, 0x1BAF).addRange(0x1BBA, 0x1BE5).addRange(0x1C00, 0x1C23).addRange(0x1C4D, 0x1C4F).addRange(0x1C5A, 0x1C7D).addRange(0x1CE9, 0x1CEC).addRange(0x1CEE, 0x1CF1).addRange(0x1CF5, 0x1CF6).addRange(0x1D00, 0x1DBF).addRange(0x1E00, 0x1F15).addRange(0x1F18, 0x1F1D).addRange(0x1F20, 0x1F45).addRange(0x1F48, 0x1F4D).addRange(0x1F50, 0x1F57).addRange(0x1F5F, 0x1F7D).addRange(0x1F80, 0x1FB4).addRange(0x1FB6, 0x1FBC).addRange(0x1FC2, 0x1FC4).addRange(0x1FC6, 0x1FCC).addRange(0x1FD0, 0x1FD3).addRange(0x1FD6, 0x1FDB).addRange(0x1FE0, 0x1FEC).addRange(0x1FF2, 0x1FF4).addRange(0x1FF6, 0x1FFC).addRange(0x2090, 0x209C).addRange(0x210A, 0x2113).addRange(0x2119, 0x211D).addRange(0x212A, 0x212D).addRange(0x212F, 0x2139).addRange(0x213C, 0x213F).addRange(0x2145, 0x2149).addRange(0x2160, 0x2188).addRange(0x2C00, 0x2C2E).addRange(0x2C30, 0x2C5E).addRange(0x2C60, 0x2CE4).addRange(0x2CEB, 0x2CEE).addRange(0x2CF2, 0x2CF3).addRange(0x2D00, 0x2D25).addRange(0x2D30, 0x2D67).addRange(0x2D80, 0x2D96).addRange(0x2DA0, 0x2DA6).addRange(0x2DA8, 0x2DAE).addRange(0x2DB0, 0x2DB6).addRange(0x2DB8, 0x2DBE).addRange(0x2DC0, 0x2DC6).addRange(0x2DC8, 0x2DCE).addRange(0x2DD0, 0x2DD6).addRange(0x2DD8, 0x2DDE).addRange(0x3005, 0x3007).addRange(0x3021, 0x3029).addRange(0x3031, 0x3035).addRange(0x3038, 0x303C).addRange(0x3041, 0x3096).addRange(0x309D, 0x309F).addRange(0x30A1, 0x30FA).addRange(0x30FC, 0x30FF).addRange(0x3105, 0x312D).addRange(0x3131, 0x318E).addRange(0x31A0, 0x31BA).addRange(0x31F0, 0x31FF).addRange(0x3400, 0x4DB5).addRange(0x4E00, 0x9FCC).addRange(0xA000, 0xA48C).addRange(0xA4D0, 0xA4FD).addRange(0xA500, 0xA60C).addRange(0xA610, 0xA61F).addRange(0xA62A, 0xA62B).addRange(0xA640, 0xA66E).addRange(0xA67F, 0xA697).addRange(0xA6A0, 0xA6EF).addRange(0xA717, 0xA71F).addRange(0xA722, 0xA788).addRange(0xA78B, 0xA78E).addRange(0xA790, 0xA793).addRange(0xA7A0, 0xA7AA).addRange(0xA7F8, 0xA801).addRange(0xA803, 0xA805).addRange(0xA807, 0xA80A).addRange(0xA80C, 0xA822).addRange(0xA840, 0xA873).addRange(0xA882, 0xA8B3).addRange(0xA8F2, 0xA8F7).addRange(0xA90A, 0xA925).addRange(0xA930, 0xA946).addRange(0xA960, 0xA97C).addRange(0xA984, 0xA9B2).addRange(0xAA00, 0xAA28).addRange(0xAA40, 0xAA42).addRange(0xAA44, 0xAA4B).addRange(0xAA60, 0xAA76).addRange(0xAA80, 0xAAAF).addRange(0xAAB5, 0xAAB6).addRange(0xAAB9, 0xAABD).addRange(0xAADB, 0xAADD).addRange(0xAAE0, 0xAAEA).addRange(0xAAF2, 0xAAF4).addRange(0xAB01, 0xAB06).addRange(0xAB09, 0xAB0E).addRange(0xAB11, 0xAB16).addRange(0xAB20, 0xAB26).addRange(0xAB28, 0xAB2E).addRange(0xABC0, 0xABE2).addRange(0xAC00, 0xD7A3).addRange(0xD7B0, 0xD7C6).addRange(0xD7CB, 0xD7FB).addRange(0xF900, 0xFA6D).addRange(0xFA70, 0xFAD9).addRange(0xFB00, 0xFB06).addRange(0xFB13, 0xFB17).addRange(0xFB1F, 0xFB28).addRange(0xFB2A, 0xFB36).addRange(0xFB38, 0xFB3C).addRange(0xFB40, 0xFB41).addRange(0xFB43, 0xFB44).addRange(0xFB46, 0xFBB1).addRange(0xFBD3, 0xFD3D).addRange(0xFD50, 0xFD8F).addRange(0xFD92, 0xFDC7).addRange(0xFDF0, 0xFDFB).addRange(0xFE70, 0xFE74).addRange(0xFE76, 0xFEFC).addRange(0xFF21, 0xFF3A).addRange(0xFF41, 0xFF5A).addRange(0xFF66, 0xFFBE).addRange(0xFFC2, 0xFFC7).addRange(0xFFCA, 0xFFCF).addRange(0xFFD2, 0xFFD7).addRange(0xFFDA, 0xFFDC).toString(),
