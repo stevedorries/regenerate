@@ -1095,11 +1095,11 @@ export class Regenerate {
     return set;
   }
 
-  public toArray() {
+  public toArray(): any[] {
     return this.valueOf();
   }
 
-  public toString(options?: any) {
+  public toString(options?: any): string {
     options = {...{bmpOnly: false, hasUnicodeFlag: false}, ...options};
     let result = createCharacterClassesFromData(
       this.data,
